@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>SVG预览与导出工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+
+        .download-bar {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .download-btn {
+            padding: 8px 16px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .download-btn:hover {
+            background: #45a049;
+        }
+
+        .container {
+            display: flex;
+            gap: 20px;
+            height: 85vh;
+        }
+
+        .editor-container, .preview-container {
+            flex: 1;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+        }
+
+        h2 {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 1.2em;
+        }
+
+        #svg-code {
+            width: 100%;
+            height: calc(100% - 40px);
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            resize: none;
+            font-family: monospace;
+        }
+
+        #preview {
+            width: 100%;
+            height: calc(100% - 40px);
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 20px;
+            overflow: auto;
+            background: repeating-conic-gradient(#f5f5f5 0% 25%, white 0% 50%) 
+                       50% / 20px 20px;
+        }
+
+        .error {
+            color: #dc3545;
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvg/dist/browser/canvg.min.js"></script>
+</head>
+<body>
+    <div class="download-bar">
+        <button class="download-btn" onclick="downloadSVG()">下载SVG</button>
+        <button class="download-btn" onclick="downloadPNG()">下载PNG</button>
+        <button class="download-btn" onclick="downloadPDF()">下载PDF</button>
+    </div>
+    
+    <div class="container">
+        <div class="editor-container">
+            <h2>SVG 代码编辑器</h2>
+            <textarea id="svg-code" placeholder="在此输入SVG代码..."></textarea>
+        </div>
+        
+        <div class="preview-container">
+            <h2>实时预览</h2>
+            <div id="preview"></div>
+            <div id="error" class="error"></div>
+        </div>
+    </div>
+
+    <script>
+        const svgCode = document.getElementById('svg-code');
+        const preview = document.getElementById('preview');
+        const errorDiv = document.getElementById('error');
+
+        // 实时预览功能
+        function updatePreview() {
+            try {
+                errorDiv.textContent = '';
+                const parser = new DOMParser();
+                const svgDoc = parser.parseFromString(svgCode.value, 'image/svg+xml');
+                
+                const parserError = svgDoc.querySelector('parsererror');
+                if (parserError) {
+                    throw new Error('无效的SVG代码');
+                }
+
+                preview.innerHTML = '';
+                preview.appendChild(svgDoc.documentElement);
+            } catch (error) {
+                errorDiv.textContent = `错误: ${error.message}`;
+                preview.innerHTML = '';
+            }
+        }
+
+        // 下载功能
+        async function downloadSVG() {
+            try {
+                const blob = new Blob([svgCode.value], {type: "image/svg+xml"});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `svg-${Date.now()}.svg`;
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                errorDiv.textContent = `SVG导出失败: ${error.message}`;
+            }
+        }
+
+        async function downloadPNG() {
+            try {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const svgDoc = new DOMParser().parseFromString(svgCode.value, 'image/svg+xml');
+                const svgElement = svgDoc.documentElement;
+                
+                const width = parseInt(svgElement.getAttribute('width')) || 300;
+                const height = parseInt(svgElement.getAttribute('height')) || 150;
+                
+                canvas.width = width;
+                canvas.height = height;
+                await canvg(canvas, svgCode.value);
+                
+                const a = document.createElement('a');
+                a.href = canvas.toDataURL('image/png');
+                a.download = `svg-${Date.now()}.png`;
+                a.click();
+            } catch (error) {
+                errorDiv.textContent = `PNG导出失败: ${error.message}`;
+            }
+        }
+
+        async function downloadPDF() {
+            try {
+                const canvas = document.createElement('canvas');
+                const svgDoc = new DOMParser().parseFromString(svgCode.value, 'image/svg+xml');
+                const svgElement = svgDoc.documentElement;
+                
+                const width = parseInt(svgElement.getAttribute('width')) || 300;
+                const height = parseInt(svgElement.getAttribute('height')) || 150;
+                
+                canvas.width = width;
+                canvas.height = height;
+                await canvg(canvas, svgCode.value);
+                
+                const pdf = new jspdf.jsPDF({ unit: 'px', format: [width, height] });
+                pdf.addImage(canvas, 'JPEG', 0, 0, width, height);
+                pdf.save(`svg-${Date.now()}.pdf`);
+            } catch (error) {
+                errorDiv.textContent = `PDF导出失败: ${error.message}`;
+            }
+        }
+
+        // 初始化
+        svgCode.addEventListener('input', updatePreview);
+        svgCode.value = `<svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+  <rect width="100%" height="100%" fill="#e0ffff" />
+  <circle cx="100" cy="100" r="80" fill="none" stroke="#ff69b4" stroke-width="4"/>
+  <path d="M100 30 L120 140 L80 140 Z" fill="#6495ed"/>
+</svg>`;
+        updatePreview();
+    </script>
+</body>
+</html>
